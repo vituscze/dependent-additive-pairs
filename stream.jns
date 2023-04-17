@@ -1,0 +1,38 @@
+-- Stream type formation and elimination
+assume (0 Stream : (0 _ : U) -> U)
+assume (w head : (0 A : U) -> (1 _ : Stream A) -> A)
+assume (w tail : (0 A : U) -> (1 _ : Stream A) -> Stream A)
+
+-- Stream type introduction
+--
+-- head A (unfold A B f s) = fst (f s)
+-- tail A (unfold A B f s) = unfold A B f (snd (f s))
+assume (w unfold : forall (0 A : U) (0 B : U)
+                          (w f : (1 _ : B) -> (_ : A) & B) (1 z : B). Stream A)
+
+let w repeat = (\A s. unfold A A (\a. <a, a>) s)
+             : forall (0 A : U) (1 s : A). Stream A
+
+let w iterate = (\A f s. unfold A A (\a. <a, f a>) s)
+              : forall (0 A : U) (w f : (1 _ : A) -> A) (1 s : A). Stream A
+
+-- A nonlinear map
+--
+-- Since the function f is referenced in the generating function directly,
+-- it cannot be linear.
+let w mapBad = (\A B f s. unfold B (Stream A)
+        (\s. <f (head A s), tail A s>) s)
+    : forall (0 A : U) (0 B : U) (w f : (1 _ : A) -> B)
+             (1 s : Stream A). Stream B
+
+-- A linear map
+--
+-- The function is threaded through the unfold in a multiplicative pair
+let w map = (\A B f s. unfold B ((1 _ : (1 _ : A) -> B) * (Stream A))
+        (\p. let 1 _@(f, s) = p
+             in <f (head A s), (f, tail A s)>
+             : (_ : B) & ((1 _ : (1 _ : A) -> B) * (Stream A)))
+        (f, s))
+    : forall (0 A : U) (0 B : U) (1 f : (1 _ : A) -> B)
+             (1 s : Stream A). Stream B
+

@@ -1,0 +1,76 @@
+-- List type formation and introduction
+assume (0 List : (0 _ : U) -> U)
+assume (w Nil  : (0 A : U) -> List A)
+assume (w Cons : (0 A : U) -> (1 _ : A) -> (1 _ : List A) -> List A)
+
+-- List type elimination
+--
+-- fold A P f z (Nil A)       = z
+-- fold A P f z (Cons A x xs) = f x xs (fold A P f z xs)
+assume (w fold :
+    forall (0 A : U)
+           (0 P : (0 _ : List A) -> U)
+           (w f : (1 x : A) -> (0 xs : List A) -> (1 _ : P xs) -> P (Cons A x xs))
+           (1 z : P (Nil A))
+           (1 l : List A).
+           P l)
+
+-- Identity type formation and introduction
+assume (0 Id   : forall (0 A : U) (0 x : A) (0 y : A). U)
+assume (w Refl : forall (0 A : U) (0 x : A). Id A x x)
+
+-- Identity type elimination
+--
+-- J A x P f x (Refl A x) = f
+assume (w J :
+    forall (0 A : U)
+           (0 x : A)
+           (0 P : (0 y : A) -> (0 _ : Id A x y) -> U)
+           (1 f : P x (Refl A x))
+           (0 y : A)
+           (1 p : Id A x y).
+           P y p)
+
+-- Identity type congruence
+let w cong = (\A B x y f p. J A x (\y _. Id B (f x) (f y)) (Refl B (f x)) y p)
+           : forall (0 A : U)
+                    (0 B : U)
+                    (0 x : A)
+                    (0 y : A)
+                    (0 f : (1 _ : A) -> B)
+                    (1 p : Id A x y).
+                    Id B (f x) (f y)
+
+-- Paramorphism return type
+let 0 Triple = (\A P l. (1 p : (l' : List A) & P l') * Id (List A) (fst p) l)
+             : forall (0 A : U)
+                      (0 P : (0 _ : List A) -> U)
+                      (0 l : List A).
+                      U
+
+-- Extract the proof and use it to rewrite the type of the result
+let w extract = (\A P l t.
+    let 1 _@(p, q) = t in
+        J (List A) (fst p) (\l' _. P l') (snd p) l q
+    : P l) : forall (0 A : U)
+                    (0 P : (0 _ : List A) -> U)
+                    (0 l : List A)
+                    (1 t : Triple A P l).
+                    P l
+
+-- List paramorphism
+let w para = (\A P f z l. extract A P l
+    (fold A
+        (Triple A P)
+        (\x xs t.
+            let 1 _@(p, q) = t in
+                (<Cons A x (fst p), f x p>, cong (List A) (List A) (fst p) xs (Cons A x) q)
+            : (Triple A P (Cons A x xs)))
+        (<Nil A, z>, Refl (List A) (Nil A))
+        l)) : forall (0 A : U)
+                     (0 P : (0 _ : List A) -> U)
+                     (w f : (1 x : A) -> (1 p : (xs : List A) & P xs) -> P (Cons A x (fst p)))
+                     (w z : P (Nil A))
+                     (1 l : List A).
+                     P l
+

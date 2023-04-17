@@ -1,0 +1,233 @@
+-- List type formation and introduction
+assume (0 List : (0 _ : U) -> U)
+assume (w Nil  : (0 A : U) -> List A)
+assume (w Cons : (0 A : U) -> (1 _ : A) -> (1 _ : List A) -> List A)
+
+-- List type elimination
+--
+-- fold A P f z (Nil A)       = z
+-- fold A P f z (Cons A x xs) = f x xs (fold A P f z xs)
+assume (w fold :
+    forall (0 A : U)
+           (0 P : (0 _ : List A) -> U)
+           (w f : (1 x : A) -> (0 xs : List A) -> (1 _ : P xs) -> P (Cons A x xs))
+           (1 z : P (Nil A))
+           (1 l : List A).
+           P l)
+
+-- Boolean type formation and introduction
+let 0 Bool  = I + I : U
+let w true  = inl () : Bool
+let w false = inr () : Bool
+
+-- Boolean type elimination
+--
+-- if P true  p = fst p
+-- if P false p = snd p
+let w if    = (\P b p.
+    case 1 _@b of
+    { inl x -> let 1 _@() = x in fst p : P
+    ; inr y -> let 1 _@() = y in snd p : P
+    } : P) : forall (0 P : U) (1 b : Bool) (1 p : (_ : P) & P). P
+
+-- Identity type formation and introduction
+assume (0 Id   : forall (0 A : U) (0 x : A) (0 y : A). U)
+assume (w Refl : forall (0 A : U) (0 x : A). Id A x x)
+
+-- Identity type elimination
+--
+-- J A x P f x (Refl A x) = f
+assume (w J :
+    forall (0 A : U)
+           (0 x : A)
+           (0 P : (0 y : A) -> (0 _ : Id A x y) -> U)
+           (1 f : P x (Refl A x))
+           (0 y : A)
+           (1 p : Id A x y).
+           P y p)
+
+-- Identity type substitution
+let w subst = (\A P x y p v. J A x (\y _. P y) v y p)
+            : forall (0 A : U) (0 P : (0 _ : A) -> U)
+                     (0 x : A) (0 y : A) (1 p : Id A x y) (1 v : P x). P y
+
+-- Union type formation and introduction
+assume (0 Union : forall (0 A : U) (0 xs : List A) (0 ys : List A) (0 zs : List A). U)
+assume (w Stop : forall (0 A : U). Union A (Nil A) (Nil A) (Nil A))
+assume (w Left :
+    forall (0 A : U) (1 x : A)
+           (0 xs : List A) (0 ys : List A) (0 zs : List A)
+           (1 u : Union A xs ys zs).
+           Union A (Cons A x xs) ys (Cons A x zs))
+assume (w Right :
+    forall (0 A : U) (1 x : A)
+           (0 xs : List A) (0 ys : List A) (0 zs : List A)
+           (1 u : Union A xs ys zs).
+           Union A xs (Cons A x ys) (Cons A x zs))
+
+-- Auxiliary definitions for the partition return type
+let 0 Result1 = (\A. (1 _ : List A) * List A) : (0 A : U) -> U
+let 0 Result2 = (\A zs r1. let 0 _@(xs, ys) = r1 in Union A xs ys zs : U)
+              : forall (0 A : U) (0 zs : List A) (0 r1 : Result1 A). U
+let 0 Result  = (\A zs. (r1 : Result1 A) & Result2 A zs r1)
+              : forall (0 A : U) (0 zs : List A). U
+
+-- Type of predicates with an attached proof
+let 0 Pred = (\A. (1 x : A) -> (1 _ : Bool) * ((1 x' : A) * Id A x' x))
+           : (0 _ : U) -> U
+
+-- Adding a new element to the first part of the result
+let w add'_l = (\A x r1. let 1 _@(l, r) = r1
+                         in (Cons A x l, r) : Result1 A)
+             : forall (0 A : U) (1 x : A) (1 r1 : Result1 A). Result1 A
+let w add'_r = (\A x r1. let 1 _@(l, r) = r1
+                         in (l, Cons A x r) : Result1 A)
+             : forall (0 A : U) (1 x : A) (1 r1 : Result1 A). Result1 A
+
+-- Adding a new element to the result
+let w add_l = (\A x zs r.
+    < add'_l A x (fst r)
+    , (
+        (let 0 r1@(xs, ys) = fst r
+         in \r2. Left A x xs ys zs r2
+         : (1 _ : Result2 A zs r1) -> Result2 A (Cons A x zs) (add'_l A x r1))
+        (snd r))
+    >) : forall (0 A : U) (1 x : A) (0 zs : List A)
+                (1 r : Result A zs). Result A (Cons A x zs)
+let w add_r = (\A x zs r.
+    < add'_r A x (fst r)
+    , (
+        (let 0 r1@(xs, ys) = fst r
+         in \r2. Right A x xs ys zs r2
+         : (1 _ : Result2 A zs r1) -> Result2 A (Cons A x zs) (add'_r A x r1))
+        (snd r))
+    >) : forall (0 A : U) (1 x : A) (0 zs : List A)
+                (1 r : Result A zs). Result A (Cons A x zs)
+
+-- Single step of the partition
+let w step = (\A p x xs r.
+        let 1 _@(b, s) = p x
+        in let 1 _@(x', q) = s
+           in subst A (\x. Result A (Cons A x xs)) x' x q
+                  (if (Result A (Cons A x' xs)) b <add_l A x' xs r, add_r A x' xs r>)
+           : Result A (Cons A x xs)
+        : Result A (Cons A x xs))
+    : forall (0 A : U) (w p : Pred A) (1 x : A) (0 xs : List A)
+             (1 r : Result A xs). Result A (Cons A x xs)
+
+-- The partition operation itself
+let w partition = (\A p l. fold A (Result A) (step A p)
+                           <(Nil A, Nil A), Stop A> l)
+                : forall (0 A : U) (w p : Pred A) (1 l : List A). Result A l
+
+-- Two additional version that use a result type with better reduction behavior
+let 0 Fst = (\A r1. let 1 _@(a, b) = r1 in a : List A)
+          : forall (0 A : U) (0 r1 : Result1 A). List A 
+let 0 Snd = (\A r1. let 1 _@(a, b) = r1 in b : List A)
+          : forall (0 A : U) (0 r1 : Result1 A). List A
+
+let 0 ResultAlt = (\A zs. (r1 : Result1 A) & Union A (Fst A r1) (Snd A r1) zs)
+                : forall (0 A : U) (0 zs : List A). U
+
+-- A version using explicit proofs and two-parameter substitutivity
+
+-- Auxiliary proofs describing the behavior of add'_l and add'_r
+let w pf1 = (\A x p. let 0 q@(a, b) = p
+                     in Refl (List A) (Cons A x a)
+                     : (Id (List A) (Cons A x (Fst A q)) (Fst A (add'_l A x q))))
+          : forall (0 A : U) (0 x : A) (0 p : Result1 A).
+                   Id (List A) (Cons A x (Fst A p)) (Fst A (add'_l A x p))
+let w pf2 = (\A x p. let 0 q@(a, b) = p
+                     in Refl (List A) b 
+                     : (Id (List A) (Snd A q) (Snd A (add'_l A x q))))
+          : forall (0 A : U) (0 x : A) (0 p : Result1 A).
+                   Id (List A) (Snd A p) (Snd A (add'_l A x p))
+let w pf3 = (\A x p. let 0 q@(a, b) = p
+                     in Refl (List A) a
+                     : (Id (List A) (Fst A q) (Fst A (add'_r A x q))))
+          : forall (0 A : U) (0 x : A) (0 p : Result1 A).
+                   Id (List A) (Fst A p) (Fst A (add'_r A x p))
+let w pf4 = (\A x p. let 0 q@(a, b) = p
+                     in Refl (List A) (Cons A x b)
+                     : (Id (List A) (Cons A x (Snd A q)) (Snd A (add'_r A x q))))
+          : forall (0 A : U) (0 x : A) (0 p : Result1 A).
+                   Id (List A) (Cons A x (Snd A p)) (Snd A (add'_r A x p))
+
+-- Substitute using two equalities
+let w substBoth = (\A P x1 x2 y1 y2 p q v.
+        J A x2 (\y2 _. P y1 y2) (J A x1 (\y1 _. P y1 x2) v y1 p) y2 q)
+    : forall (0 A : U) (0 P : (0 _ : A) -> (0 _ : A) -> U)
+             (0 x1 : A) (0 x2 : A) (0 y1 : A) (0 y2 : A)
+             (1 p : Id A x1 y1) (1 q : Id A x2 y2) (1 v : P x1 x2). P y1 y2
+
+let w addAlt_l = (\A x xs p.
+    < add'_l A x (fst p)
+    , substBoth (List A) (\a b. Union A a b (Cons A x xs))
+          (Cons A x (Fst A (fst p))) (Snd A (fst p))
+          (Fst A (add'_l A x (fst p))) (Snd A (add'_l A x (fst p)))
+          (pf1 A x (fst p)) (pf2 A x (fst p))
+          (Left A x (Fst A (fst p)) (Snd A (fst p)) xs (snd p))
+    >) : forall (0 A : U) (1 x : A) (0 xs : List A)
+                (1 p : ResultAlt A xs). ResultAlt A (Cons A x xs)
+let w addAlt_r = (\A x xs p.
+    < add'_r A x (fst p)
+    , substBoth (List A) (\a b. Union A a b (Cons A x xs))
+          (Fst A (fst p)) (Cons A x (Snd A (fst p)))
+          (Fst A (add'_r A x (fst p))) (Snd A (add'_r A x (fst p)))
+          (pf3 A x (fst p)) (pf4 A x (fst p))
+          (Right A x (Fst A (fst p)) (Snd A (fst p)) xs (snd p))
+    >) : forall (0 A : U) (1 x : A) (0 xs : List A)
+                (1 p : ResultAlt A xs). ResultAlt A (Cons A x xs)
+
+let w stepAlt = (\A p x xs r.
+        let 1 _@(b, s) = p x
+        in (let 1 _@(y, pf) = s
+            in subst A (\x. ResultAlt A (Cons A x xs)) y x pf
+                   (if (ResultAlt A (Cons A y xs)) b
+                       <addAlt_l A y xs r, addAlt_r A y xs r>)
+            : ResultAlt A (Cons A x xs))
+        : ResultAlt A (Cons A x xs))
+    : forall (0 A : U) (w p : Pred A) (1 x : A) (0 xs : List A)
+             (1 r : ResultAlt A xs). ResultAlt A (Cons A x xs)
+
+let w partitionAlt = (\A p l. fold A (ResultAlt A) (stepAlt A p)
+                              <(Nil A, Nil A), Stop A> l)
+                   : forall (0 A : U) (w p : Pred A) (1 l : List A). ResultAlt A l
+
+-- A version using explicit elimination to drive evaluation
+let w addAlt2'_l = (\A x xs p.
+    < add'_l A x (fst p)
+    , (
+        (let 0 q@(a, b) = fst p
+         in \q. Left A x a b xs q
+         : (1 _ : Union A (Fst A q) (Snd A q) xs) ->
+           Union A (Fst A (add'_l A x q)) (Snd A (add'_l A x q)) (Cons A x xs))
+        (snd p))
+    >) : forall (0 A : U) (1 x : A) (0 xs : List A)
+                (1 p : ResultAlt A xs). ResultAlt A (Cons A x xs)
+let w addAlt2'_r = (\A x xs p.
+    < add'_r A x (fst p)
+    , (
+        (let 0 q@(a, b) = fst p
+         in \q. Right A x a b xs q
+         : (1 _ : Union A (Fst A q) (Snd A q) xs) ->
+           Union A (Fst A (add'_r A x q)) (Snd A (add'_r A x q)) (Cons A x xs))
+        (snd p))
+    >) : forall (0 A : U) (1 x : A) (0 xs : List A)
+                (1 p : ResultAlt A xs). ResultAlt A (Cons A x xs)
+
+let w stepAlt2 = (\A p x xs r.
+        let 1 _@(b, s) = p x
+        in (let 1 _@(y, pf) = s
+            in subst A (\x. ResultAlt A (Cons A x xs)) y x pf
+                   (if (ResultAlt A (Cons A y xs)) b
+                       <addAlt2'_l A y xs r, addAlt2'_r A y xs r>)
+            : ResultAlt A (Cons A x xs))
+        : ResultAlt A (Cons A x xs))
+    : forall (0 A : U) (w p : Pred A) (1 x : A) (0 xs : List A)
+             (1 r : ResultAlt A xs). ResultAlt A (Cons A x xs)
+
+let w partitionAlt2 = (\A p l. fold A (ResultAlt A) (stepAlt2 A p)
+                               <(Nil A, Nil A), Stop A> l)
+                    : forall (0 A : U) (w p : Pred A) (1 l : List A). ResultAlt A l
+

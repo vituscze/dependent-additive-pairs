@@ -1,0 +1,75 @@
+-- Additive list type formation and introduction
+assume (0 AList : (0 _ : U) -> U)
+assume (w ALast : (0 A : U) -> (1 _ : A) -> AList A)
+assume (w ACons : (0 A : U) -> (1 _ : (_ : A) & AList A) -> AList A)
+
+-- Additive list elimination
+--
+-- afold A B f z (ALast x) = z x
+-- afold A B f z (ACons p) = f <fst p, afold A B f z (snd p)>
+assume (w afold : forall (0 A : U) (0 P : U) (w f : (1 _ : (_ : A) & P) -> P)
+                         (w z : (1 _ : A) -> P) (1 _ : AList A). P)
+
+-- Additive list map
+--
+-- Note that the function f is consumed linearly.
+let w amap = (\A B f l.
+    afold A ((1 _ : (1 _ : A) -> B) -> AList B)
+        (\p f. ACons B <f (fst p), ((snd p) f)>)
+        (\x f. ALast B (f x)) l f)
+    : forall (0 A : U) (0 B : U) (1 f : (1 _ : A) -> B) (1 l : AList A). AList B
+
+-- Natural number type formation
+assume (0 Nat : U)
+
+-- Natural number type elimination
+assume (w ind : forall (0 P : U) (w f : (1 _ : P) -> P)
+                       (1 z : P) (1 n : Nat). P)
+
+-- Weakened version of the elimination where the function f isn't linear
+assume (w indWeak : forall (0 P : U) (w f : (w _ : P) -> P)
+                           (1 z : P) (1 n : Nat). P)
+
+-- Linear replicate using an additive pair
+let w replicate = (\A n x. fst (ind ((_ : AList A) & A)
+        (\p. <ACons A <snd p, fst p>, snd p>) <ALast A x, x> n))
+    : forall (0 A : U) (1 n : Nat) (1 x : A). AList A
+
+-- Replicate using natural number elimination into a function type
+--
+-- Note that since the function f is discarded in the first element of the
+-- additive pair, it needs to have the omega multiplicty, thus the weakened
+-- elimination.
+let w replicateWeak = (\A n x. indWeak ((1 _ : A) -> AList A)
+        (\f x. ACons A <x, f x>) (\x. ALast A x) n x)
+    : forall (0 A : U) (1 n : Nat) (1 x : A). AList A
+
+-- We can also use the normal elimination if we wrap the function in an
+-- exponential type.
+
+-- Exponential type formation and elimination
+-- Note that we are using a specific version to reduce type annotation.
+let 0 Exp = (\A. (w _ : (1 _ : A) -> AList A) * I) : (0 _ : U) -> U
+let w ExpElim = (\A B f a. let 1 _@(g, i) = a
+                           in let 1 _ @ () = i in f g : B
+                           : B)
+              : forall (0 A : U) (0 B : U)
+                       (1 f : (w _ : (1 _ : A) -> AList A) -> B)
+                       (1 a : Exp A). B
+
+let w replicateExp = (\A n.
+    ExpElim A ((1 _ : A) -> AList A) (\g. g)
+        (ind (Exp A)
+            (ExpElim A (Exp A)
+                (\g. ((\x. ACons A <x, g x>), ())))
+            ((\x. ALast A x), ()) n))
+    : forall (0 A : U) (1 n : Nat) (1 x : A). AList A
+
+let w head = (\A. afold A A (\x. fst x) (\x. x))
+           : (0 A : U) -> (1 _ : AList A) -> A
+
+-- Alternate definition that just replicates head of the list
+let w replicateHead = (\A n x.
+        ind (AList A) (\x. ACons A <head A x, x>) (ALast A x) n)
+    : forall (0 A : U) (1 n : Nat) (1 x : A). AList A
+
