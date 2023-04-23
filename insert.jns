@@ -1,0 +1,104 @@
+-- List type formation and introduction
+assume (0 List : (0 _ : U) -> U)
+assume (w Nil  : (0 A : U) -> List A)
+assume (w Cons : (0 A : U) -> (1 _ : A) -> (1 _ : List A) -> List A)
+
+-- List type eliminations
+--
+-- fold A P f z (Nil A)       = z
+-- fold A P f z (Cons A x xs) = f x xs (fold A P f z xs)
+--
+-- para A P f z (Nil A)       = z
+-- para A P f z (Cons A x xs) = f x <xs, para A P f z xs>
+assume (w fold :
+    forall (0 A : U)
+           (0 P : (0 _ : List A) -> U)
+           (w f : (1 x : A) -> (0 xs : List A) -> (1 _ : P xs) -> P (Cons A x xs))
+           (1 z : P (Nil A))
+           (1 l : List A).
+           P l)
+assume (w para :
+    forall (0 A : U)
+           (0 P : (0 _ : List A) -> U)
+           (w f : (1 x : A) -> (1 p : (xs : List A) & P xs) -> P (Cons A x (fst p)))
+           (w z : P (Nil A))
+           (1 l : List A).
+           P l)
+
+-- Boolean type formation and introduction
+let 0 Bool  = I + I : U
+let w true  = inl () : Bool
+let w false = inr () : Bool
+
+-- Boolean type elimination
+--
+-- if P true  p = fst p
+-- if P false p = snd p
+let w if    = (\P b p.
+    case 1 _@b of
+    { inl x -> let 1 _@() = x in fst p : P
+    ; inr y -> let 1 _@() = y in snd p : P
+    } : P) : forall (0 P : U) (1 b : Bool) (1 p : (_ : P) & P). P
+
+-- Identity type formation and introduction
+assume (0 Id   : forall (0 A : U) (0 x : A) (0 y : A). U)
+assume (w Refl : forall (0 A : U) (0 x : A). Id A x x)
+
+-- Substitute using two equalities
+--
+-- substBoth A P x1 x2 x1 x2 (Refl A x1) (Refl A x2) v = v
+assume (w substBoth : forall (0 A : U) (0 P : (0 _ : A) -> (0 _ : A) -> U)
+                             (0 x1 : A) (0 x2 : A) (0 y1 : A) (0 y2 : A)
+                             (1 p : Id A x1 y1) (1 q : Id A x2 y2)
+                             (1 v : P x1 x2). P y1 y2)
+
+-- Union type formation and introduction
+assume (0 Union : forall (0 A : U) (0 xs : List A) (0 ys : List A) (0 zs : List A). U)
+assume (w Stop : forall (0 A : U). Union A (Nil A) (Nil A) (Nil A))
+assume (w Left :
+    forall (0 A : U) (1 x : A)
+           (0 xs : List A) (0 ys : List A) (0 zs : List A)
+           (1 u : Union A xs ys zs).
+           Union A (Cons A x xs) ys (Cons A x zs))
+assume (w Right :
+    forall (0 A : U) (1 x : A)
+           (0 xs : List A) (0 ys : List A) (0 zs : List A)
+           (1 u : Union A xs ys zs).
+           Union A xs (Cons A x ys) (Cons A x zs))
+
+-- Union lemma: interleaving a given list with an empty list does nothing
+let w lemma = (\A l. fold A (\l. Union A l (Nil A) l)
+                         (\x xs u. Left A x xs (Nil A) xs u) (Stop A) l)
+            : forall (0 A : U) (1 l : List A). Union A l (Nil A) l
+
+-- Type of comparison functions
+let 0 Cmp = (\A. forall (1 x : A) (1 y : A).
+        (1 b : Bool) * ((1 x' : A) * ((1 y' : A) * ((1 p : Id A x' x) * Id A y' y))))
+    : forall (0 A : U). U
+
+-- Result type
+let 0 Result = (\A x xs. (l : List A) & (Union A xs (Cons A x (Nil A)) l))
+             : forall (0 A : U) (0 x : A) (0 xs : List A). U
+
+-- Insertion operation with a proof of correctness, implemented
+-- using a paramorphism
+let w insert = (\A x xs cmp. para A (\xs. (1 x : A) -> Result A x xs)
+    (\y res x.
+        let 1 _@(b, s1) = cmp x y
+        in let 1 _@(x', s2) = s1
+           in let 1 _@(y', s3) = s2
+              in let 1 _@(p, q) = s3
+                 in substBoth A (\x y. Result A x (Cons A y (fst res))) x' y' x y p q
+                    (if (Result A x' (Cons A y' (fst res))) b
+                        < < Cons A y' (fst ((snd res) x'))
+                          , Left A y' (fst res) (Cons A x' (Nil A)) (fst ((snd res) x'))
+                                (snd ((snd res) x')) >
+                        , < Cons A x' (Cons A y' (fst res))
+                          , Right A x' (Cons A y' (fst res)) (Nil A) (Cons A y' (fst res))
+                                (lemma A (Cons A y' (fst res))) > >)
+                 : Result A x (Cons A y (fst res))
+              : Result A x (Cons A y (fst res))
+           : Result A x (Cons A y (fst res))
+        : Result A x (Cons A y (fst res)))
+    (\x. <Cons A x (Nil A), Right A x (Nil A) (Nil A) (Nil A) (Stop A)>) xs x)
+    : forall (0 A : U) (1 x : A) (1 xs : List A) (w cmp : Cmp A). Result A x xs
